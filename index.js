@@ -1,8 +1,10 @@
 'use strict';
 
 var VOID_TAGS = ['area', 'base', 'br', 'col', 'command', 'embed', 'hr',
-    'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track',
-    'wbr', '!doctype'];
+  'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track',
+  'wbr', '!doctype'];
+
+var reactIdArray = [0];
 
 function isArray(thing) {
   return Object.prototype.toString.call(thing) === '[object Array]';
@@ -10,7 +12,7 @@ function isArray(thing) {
 
 function camelToDash(str) {
   return str.replace(/\W+/g, '-')
-            .replace(/([a-z\d])([A-Z])/g, '$1-$2');
+      .replace(/([a-z\d])([A-Z])/g, '$1-$2');
 }
 
 function removeEmpties(n) {
@@ -61,15 +63,20 @@ function createAttrString(attrs, escapeAttributeValue) {
   }).join('');
 }
 
-function createChildrenContent(view) {
+function createChildrenContent(view, reactId, isParentComponent) {
   if(isArray(view.children) && !view.children.length) {
     return '';
   }
 
-  return render(view.children);
+  return render(view.children, null, reactId, false, isParentComponent);
 }
 
-function render(view, options) {
+function createReactIdString(reactId) {
+  //return ' data-reactId="' + reactId + '"';
+  return ' data-reactId="' + reactIdArray.join('.') + '"';
+}
+
+function render(view, options, reactId, isComponent, isFirstChildOfComponent) {
   options = options || {};
 
   var defaultOptions = {
@@ -96,30 +103,50 @@ function render(view, options) {
   }
 
   if (isArray(view)) {
-    return view.map(function(view) { return render(view, options) }).join('');
+    if (isFirstChildOfComponent) {
+      reactIdArray.push(0);
+    }
+
+    var childrenHTML = view.map(function(view, index) { return render(view, options, reactId + '.' + index, false, isComponent && index === 0 ? true : false) }).join('');
+
+    if (isFirstChildOfComponent) {
+      reactIdArray.pop();
+    }
+
+    return childrenHTML;
   }
 
   //compontent
   if (view.view) {
+    reactId = reactIdArray[reactIdArray.length-1] + 1;
+    reactIdArray[reactIdArray.length-1] = reactId;
+
+    //registerComponent(reactId, );
+
     var scope = view.controller ? new view.controller : {};
-    var result = render(view.view(scope), options);
+
+    var result = render(view.view(scope), options, reactId, true, false);
     if (scope.onunload) {
       scope.onunload();
     }
+
     return result;
   }
 
   if (view.$trusted) {
     return '' + view;
   }
-  var children = createChildrenContent(view);
+
+  var reactIdString =  (isComponent ? createReactIdString(reactId) : '');
+
+  var children = createChildrenContent(view, reactId, isComponent);
   if (!children && VOID_TAGS.indexOf(view.tag.toLowerCase()) >= 0) {
-    return '<' + view.tag + createAttrString(view.attrs, options.escapeAttributeValue) + '>';
+    return '<' + view.tag + createAttrString(view.attrs, options.escapeAttributeValue) + reactIdString + '>';
   }
   return [
-    '<', view.tag, createAttrString(view.attrs, options.escapeAttributeValue), '>',
+    '<', view.tag, createAttrString(view.attrs, options.escapeAttributeValue), reactIdString, '>',
     children,
-    '</', view.tag, '>',
+    '</', view.tag, '>'
   ].join('');
 }
 
